@@ -1,0 +1,49 @@
+# 大模型：约 1985 万参数，训练和生成共用此配置。
+# 在项目根目录运行；所有相对路径均相对于运行命令时的工作目录。
+# 训练：python train.py --config configs/dit_20m.yaml
+# 生成：python sample.py --config configs/dit_20m.yaml
+
+# 公共设置：训练和独立生成均使用这些参数。
+seed: 42                  # 随机种子，用于数据划分、模型初始化及噪声采样。
+device: cuda               # auto 自动选择 CUDA/CPU；也可指定 cpu、cuda 或 cuda:0。
+num_threads: 4            # PyTorch 的 CPU 计算线程数，正整数；与数据加载进程数不同。
+output_dir: outputs/dit-20m-b512-e50  # 训练产物的根目录；独立生成使用下方 sample.output。
+
+# 数据：官方训练集 60000 张，划分为训练集和验证集；测试集另有 10000 张。
+data:
+  root: data              # 数据根目录，原始文件位于 data/FashionMNIST/raw/。
+  batch_size: 512         # 训练和评估的批大小，正整数；保留最后一个不足批次。
+  val_size: 5000          # 验证集图片数，须在 1～59999 之间；其余图片用于训练。
+  num_workers: 2          # 数据加载子进程数，非负整数；0 表示在主进程加载。
+  download: false        # 是否允许下载缺失的数据；false 时需事先准备本地数据。
+
+# 模型：当前项目使用 Fashion-MNIST，固定为 28×28 单通道图片和 10 个类别。
+# 生成或续训时，这一段必须与 checkpoint 中保存的模型配置一致。
+model:
+  img_size: 28            # 图片边长，当前固定为 28。
+  patch_size: 4           # 每个 patch 的边长，须整除 img_size；此处得到 7×7=49 个 token。
+  in_channels: 1         # 图片通道数，当前固定为 1（灰度）。
+  emb_size: 512           # token 特征维度，须是 4 的倍数，且能被 num_heads 整除。
+  depth: 4                # DiT block 的层数，正整数；各层参数独立。
+  num_heads: 8            # 每层自注意力的头数，正整数。
+  mlp_ratio: 4            # block 内 MLP 隐藏维度与 emb_size 的比值，正整数。
+  num_classes: 10        # 类别数，当前固定为 10，类别编号为 0～9。
+
+# 训练：由 train.py 使用；独立生成时仍需保留本段，以通过完整配置校验。
+train:
+  resume: null            # null 从头训练；续训填写 last.pt 路径，并保留原实验 output_dir。
+  epochs: 50             # 目标总轮数；续训时须大于 checkpoint 已完成的轮数。
+  learning_rate: 0.0001   # AdamW 学习率，须为有限正数。
+  weight_decay: 0.01      # AdamW 权重衰减，须为有限非负数。
+  amp: true               # 是否启用 CUDA 混合精度；优先 BF16，否则 FP16；CPU 不启用。
+  sample_every: 5         # 每隔多少轮保存阶段 checkpoint 和固定噪声预览；最后一轮也保存。
+
+# 生成：由 sample.py 使用；其中 steps 和 samples_per_class 也用于训练期间的预览。
+sample:
+  checkpoint: outputs/dit-20m-b512-e50/checkpoints/best.pt  # 独立生成加载的权重，须先训练或自行准备。
+  output: outputs/dit-20m-b512-e50/samples/generated.png  # 独立生成图片路径，支持 png、jpg、jpeg。
+  class_id: null          # null 生成全部十类；填 0～9 则只生成指定类别。
+  num_samples: 16         # 指定 class_id 时生成的图片数，正整数。
+  compare_steps: null     # null 使用 steps；填 [10, 25, 50, 100] 则用同一噪声比较不同步数。
+  steps: 50               # Euler 积分步数，正整数；步数对比模式下由 compare_steps 覆盖。
+  samples_per_class: 8    # 全部十类时每类的图片数，也是训练预览每类的图片数。
